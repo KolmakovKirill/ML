@@ -1,41 +1,25 @@
 import streamlit as st
-import numpy as np
-from PIL import Image, ImageOps
-from tensorflow.keras.models import load_model
-from streamlit_drawable_canvas import st_canvas
+from diffusers import StableDiffusionPipeline
+import torch
 
-
-st.title("🖍️ Распознавание рукописных цифр")
-
-# Загрузка модели
 @st.cache_resource
-def load_digit_model():
-    return load_model("model.h5")
+def load_pipeline():
+    model_id = "CompVis/stable-diffusion-v1-4"
+    pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+    pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
+    return pipe
 
-model = load_digit_model()
+pipe = load_pipeline()
 
-# Канва для рисования
-st.markdown("Нарисуйте цифру:")
-canvas_result = st_canvas(
-    fill_color="#000000",
-    stroke_width=10,
-    stroke_color="#FFFFFF",
-    background_color="#000000",
-    height=280,
-    width=280,
-    drawing_mode="freedraw",
-    key="canvas",
-)
+st.title("🎨 Генерация изображений по описанию (Stable Diffusion)")
 
-if canvas_result.image_data is not None:
-    # Обработка изображения
-    image = Image.fromarray((canvas_result.image_data[:, :, 0] * 255).astype(np.uint8))
-    image = ImageOps.grayscale(image)
-    image = image.resize((28, 28))
-    img_array = np.array(image).reshape(1, 28, 28) / 255.0
+prompt = st.text_input("Опиши изображение (на английском)", "a fantasy landscape with castles and dragons")
 
-    st.image(image, caption="Предобработанное изображение", width=150)
+steps = st.slider("Число шагов генерации", 10, 100, 50)
+seed = st.number_input("Случайное зерно (seed)", value=42)
 
-    if st.button("Предсказать"):
-        prediction = model.predict(img_array)
-        st.subheader(f"Предсказание: {np.argmax(prediction)}")
+if st.button("Сгенерировать"):
+    generator = torch.manual_seed(seed)
+    with st.spinner("Генерируем изображение..."):
+        image = pipe(prompt, num_inference_steps=steps, generator=generator).images[0]
+        st.image(image, caption="Сгенерированное изображение", use_column_width=True)
